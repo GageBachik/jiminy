@@ -2,9 +2,16 @@
 
 A comprehensive macro system for building high-performance Solana programs with the pinocchio framework, designed to minimize boilerplate while maintaining zero-cost abstractions and security.
 
+# To use just drop jiminy.rs in your src directory and build.rs in your root directory.
+
+# Checkout the cargo.toml for dependencies and this file for usage examples.
+
+# checkout the exmaples directory for some pinocchio programs using jiminy.
+
 ## Overview
 
 Jiminy.rs provides a complete macro ecosystem for Solana program development, including:
+
 - **State Management**: `define_state!` for on-chain state structs
 - **Instruction Definition**: `define_instruction_with_metadata!` for instruction handlers
 - **Account Operations**: Loading, validation, and PDA management macros
@@ -31,11 +38,13 @@ define_state! {
 ```
 
 **Generated Features:**
+
 - `#[repr(C)]` for C-style memory layout
 - `#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]` for efficient serialization
 - `impl` block with `LEN` constant and `load()` method for account data loading
 
 **Key Design Decisions:**
+
 - Uses byte arrays (`[u8; 8]`) instead of primitive types for optimal on-chain sizing
 - No padding fields - relies on proper field ordering for alignment
 - Direct memory access for maximum performance
@@ -71,7 +80,7 @@ define_instruction_with_metadata!(
 The macro supports several account type annotations:
 
 - `signer`: Account must be a signer
-- `program`: Account owned by our program  
+- `program`: Account owned by our program
 - `token`: Account owned by token program
 - `not_token`: Account NOT owned by token program (for ATAs)
 - `uninitialized`: Account not yet initialized (automatically marked writable)
@@ -89,8 +98,9 @@ authority_token_account: token => writable, desc: "user's token account",
 ### Generated Components
 
 The macro generates:
+
 1. **Accounts struct**: For type-safe account access with validation
-2. **Data struct**: For instruction data with bytemuck serialization  
+2. **Data struct**: For instruction data with bytemuck serialization
 3. **Instruction struct**: Combining accounts and data
 4. **TryFrom implementations**: For parsing from raw account/data arrays
 5. **Shank annotations**: For automatic IDL generation
@@ -119,8 +129,8 @@ validate_account!(account, any);                       // No validation
 Fast PDA validation without recomputing the address:
 
 ```rust
-assert_pda!(account, 
-    seeds: [PLATFORM_SEED], 
+assert_pda!(account,
+    seeds: [PLATFORM_SEED],
     bump: platform_state.platform_bump,
     error: PTokenProgramError::PlatformKeyIncorrect);
 ```
@@ -239,12 +249,14 @@ let value = to_be_bytes!(stored_bytes);     // u64::from_be_bytes(stored_bytes)
 The project uses `build.rs` to automatically generate shank-compatible code:
 
 ### Automatic Instruction Discovery
+
 ```rust
 // Scans src/instructions/*.rs files for define_instruction_with_metadata! macros
 let instructions = extract_instruction_metadata();
 ```
 
 ### IDL Generation
+
 ```rust
 // Generates ShankInstruction enum with proper account annotations
 #[repr(u8)]
@@ -255,7 +267,8 @@ pub enum ProgramInstructions {
 }
 ```
 
-### Dispatch Generation  
+### Dispatch Generation
+
 ```rust
 // Automatically generates process_instruction function
 pub fn process_instruction(
@@ -316,7 +329,7 @@ define_program_instructions!(
         #[account(0, signer, writable, name = "authority", desc = "Authority")]
         data: { fee: [u8; 2] }
     }),
-    shank_instruction!(UpdatePlatform { 
+    shank_instruction!(UpdatePlatform {
         data: { new_fee: [u8; 2] }
     })
 );
@@ -350,7 +363,7 @@ define_state! {
         pub platform_bump: u8,
         pub vault_bump: u8,
     }
-    
+
     pub struct Vote {
         pub token: [u8; 32],
         pub true_votes: [u8; 8],
@@ -445,6 +458,7 @@ create_pda!(
 ## Best Practices
 
 ### 1. Data Types and Memory Layout
+
 - **Use byte arrays**: `[u8; N]` for all numeric data to avoid endianness issues and ensure consistent sizing
 - **Conversion patterns**: Use `u64::from_le_bytes()` for storage, `u64::from_be_bytes()` for wire format
 - **Alignment**: Keep structs minimal and properly aligned - no padding fields
@@ -468,6 +482,7 @@ pub struct BadVote {
 ### 2. Security Validations
 
 **Always validate PDAs using macros:**
+
 ```rust
 // Single PDA validation
 assert_pda!(platform, seeds: [PLATFORM_SEED], bump: platform_state.platform_bump,
@@ -483,6 +498,7 @@ validate_pdas!(
 ```
 
 **Account validation is automatic:**
+
 ```rust
 // The macro automatically validates account types
 accounts: {
@@ -495,6 +511,7 @@ accounts: {
 ### 3. Performance Optimizations
 
 **Use efficient loading patterns:**
+
 ```rust
 // Preferred: direct mutable loading
 let vote_state = load_mut!(vote, Vote);
@@ -511,6 +528,7 @@ let state = unsafe { perf::load_unchecked::<Vote>(vote_account)? };
 ```
 
 **Batch operations when possible:**
+
 ```rust
 // Good: batch token transfers
 let bump = [vote_state.vault_bump];
@@ -523,6 +541,7 @@ transfer_tokens!(vault_account, fee_account, vault_pda, fee_amount,
 ### 4. Error Handling Patterns
 
 **Use specific error types:**
+
 ```rust
 // Custom error enum with shank integration
 #[derive(Clone, PartialEq, ShankType)]
@@ -541,6 +560,7 @@ if now < vote_deadline {
 ### 5. Account Management
 
 **PDA creation patterns:**
+
 ```rust
 // For signer accounts: manual creation
 pinocchio_system::instructions::CreateAccount {
@@ -562,6 +582,7 @@ create_pda!(
 ```
 
 **Account closing:**
+
 ```rust
 // Efficient account closing with lamport transfer
 close_account!(position, vault);
@@ -572,6 +593,7 @@ close_account!(position, vault);
 The macros provide automatic IDL generation through shank integration:
 
 ### Automatic Shank Enum Generation
+
 ```rust
 // Generated in src/generated.rs
 #[repr(u8)]
@@ -588,6 +610,7 @@ pub enum ProgramInstructions {
 ```
 
 ### ShankAccount Integration
+
 ```rust
 // Automatically generated for state structs
 #[repr(C)]
@@ -602,6 +625,7 @@ pub struct Vote {
 ```
 
 ### IDL Generation Commands
+
 ```bash
 # Generate IDL for the program
 shank idl -p pVoTew8KNhq6rsrYq9jEUzKypytaLtQR62UbagWTCvu
@@ -613,30 +637,36 @@ cargo build-sbf
 ## Complete Macro Reference
 
 ### Core Macros
+
 - `define_instruction_with_metadata!` - Main instruction definition
 - `define_state!` - State struct definition
 
 ### Validation Macros
+
 - `validate_account!` - Individual account validation
-- `assert_pda!` - Single PDA validation  
+- `assert_pda!` - Single PDA validation
 - `validate_pdas!` - Batch PDA validation
 
 ### Loading Macros
+
 - `load_mut!` - Mutable account loading
 - `load!` - Immutable account loading
 - `with_state!` - Closure-based state loading
 
 ### Operation Macros
+
 - `create_pda!` - PDA creation with bump
 - `transfer_tokens!` - Token transfers (with/without PDA signing)
 - `transfer_sol!` - SOL transfers
 - `close_account!` - Account closing with lamport transfer
 
 ### Utility Macros
+
 - `to_le_bytes!` - Little endian conversion
 - `to_be_bytes!` - Big endian conversion
 
 ### Program Generation Macros
+
 - `jiminy_define_program!` - Complete program with shank enum
 - `jiminy_program!` - Simple dispatch generation
 - `define_program_instructions!` - Shank enum generation
@@ -645,6 +675,7 @@ cargo build-sbf
 ## Migration from Traditional Patterns
 
 ### Before (Manual Implementation)
+
 ```rust
 // Manual account struct definition
 #[repr(C)]
@@ -661,12 +692,12 @@ impl<'info> TryFrom<&'info [AccountInfo]> for InitializePlatformAccounts<'info> 
         let [authority, platform, vault, ..] = accounts else {
             return Err(ProgramError::NotEnoughAccountKeys);
         };
-        
+
         if !authority.is_signer() {
             return Err(ProgramError::MissingRequiredSignature);
         }
         // ... more manual validation
-        
+
         Ok(Self { authority, platform, vault })
     }
 }
@@ -691,6 +722,7 @@ pub fn process_initialize_platform(
 ```
 
 ### After (Jiminy Macros)
+
 ```rust
 define_instruction_with_metadata!(
     discriminant: 0,
@@ -709,7 +741,7 @@ define_instruction_with_metadata!(
     process: {
         // Direct implementation with automatic validation
         // All accounts pre-validated, data pre-parsed
-        
+
         create_pda!(
             from: authority,
             to: platform,
@@ -717,7 +749,7 @@ define_instruction_with_metadata!(
             seeds: [PLATFORM_SEED],
             bump: platform_bump
         );
-        
+
         Ok(())
     }
 );
@@ -726,6 +758,7 @@ define_instruction_with_metadata!(
 ## Common Gotchas and Solutions
 
 ### 1. Byte Order Consistency
+
 ```rust
 // Problem: mixing endianness
 vote_state.true_votes = total_true.to_le_bytes();  // Storage
@@ -737,6 +770,7 @@ let stored_value = u64::from_be_bytes(vote_state.true_votes);
 ```
 
 ### 2. Account Size Calculation
+
 ```rust
 // Problem: incorrect size calculation
 pub struct Vote {
@@ -752,6 +786,7 @@ pub struct Vote {
 ```
 
 ### 3. PDA Validation
+
 ```rust
 // Problem: manual PDA validation
 let (expected_pda, _) = Pubkey::find_program_address(&[seeds], &program_id);
@@ -765,6 +800,7 @@ assert_pda!(account, seeds: [PLATFORM_SEED], bump: bump,
 ```
 
 ### 4. Uninitialized Account Handling
+
 ```rust
 // The macro automatically marks uninitialized accounts as writable
 accounts: {
@@ -775,6 +811,7 @@ accounts: {
 ## Development Workflow
 
 ### 1. Project Setup
+
 ```bash
 # Add dependencies to Cargo.toml
 [dependencies]
@@ -785,6 +822,7 @@ paste = "1.0"
 ```
 
 ### 2. Define State Structs
+
 ```rust
 // src/state/mod.rs
 define_state! {
@@ -798,6 +836,7 @@ define_state! {
 ```
 
 ### 3. Create Instructions
+
 ```rust
 // src/instructions/initialize_platform.rs
 define_instruction_with_metadata!(
@@ -810,6 +849,7 @@ define_instruction_with_metadata!(
 ```
 
 ### 4. Build and Test
+
 ```bash
 # Build program with automatic IDL generation
 cargo build-sbf
@@ -822,6 +862,7 @@ cargo test-sbf
 ```
 
 ### 5. Deploy
+
 ```bash
 # Deploy to devnet
 solana program deploy target/deploy/program.so --program-id keypair.json
@@ -830,6 +871,7 @@ solana program deploy target/deploy/program.so --program-id keypair.json
 ## Performance Characteristics
 
 The jiminy macro system provides:
+
 - **Zero-cost abstractions**: Macros expand to efficient pinocchio calls
 - **Compile-time validation**: Account types validated at compile time
 - **Minimal runtime overhead**: Direct memory access with bytemuck
