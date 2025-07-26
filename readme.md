@@ -1,12 +1,21 @@
-# Jiminy.rs - Pinocchio Solana Program Macros
+<h1 align="center">
+  <code>jiminy</code>
+</h1>
+<p align="center">
+  <img width="400" height="400" alt="jiminy logo" src="https://github.com/user-attachments/assets/a3f172c9-692c-4363-881f-d6288f806623" />
+</p>
+<p align="center">
+    Pinocchio Solana Program Macros
+</p>
+
 
 A comprehensive macro system for building high-performance Solana programs with the pinocchio framework, designed to minimize boilerplate while maintaining zero-cost abstractions and security.
 
-# To use just drop jiminy.rs in your src directory and build.rs in your root directory.
+## Usage
 
-# Checkout the cargo.toml for dependencies and this file for usage examples.
-
-# checkout the exmaples directory for some pinocchio programs using jiminy.
+    To use just drop jiminy.rs in your src directory and build.rs in your root directory
+    Checkout the cargo.toml for dependencies and this file for usage examples
+    Explore the exmaples directory for some pinocchio programs using jiminy
 
 ## Overview
 
