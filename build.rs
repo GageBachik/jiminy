@@ -15,8 +15,11 @@ fn main() {
     // Parse error definitions from error.rs
     let errors = extract_error_metadata();
 
+    // Parse state definitions from state files
+    let state_structs = extract_state_metadata();
+
     // Generate the program enum and dispatch
-    let generated_code = generate_program_code(&instructions, &errors);
+    let generated_code = generate_program_code(&instructions, &errors, &state_structs);
 
     // Write to output file
     fs::write(&dest_path, &generated_code).unwrap();
@@ -239,6 +242,18 @@ struct ErrorVariant {
     code: u32,
 }
 
+#[derive(Debug)]
+struct StateMeta {
+    name: String,
+    fields: Vec<StateFieldMeta>,
+}
+
+#[derive(Debug)]
+struct StateFieldMeta {
+    name: String,
+    field_type: String,
+}
+
 fn extract_error_metadata() -> Vec<ErrorMeta> {
     let error_path = Path::new("src/error.rs");
     if !error_path.exists() {
@@ -318,7 +333,172 @@ fn parse_error_macro(content: &str) -> Option<ErrorMeta> {
     }
 }
 
-fn generate_program_code(instructions: &[InstructionMeta], errors: &[ErrorMeta]) -> String {
+fn extract_state_metadata() -> Vec<StateMeta> {
+    let mut state_structs = Vec::new();
+
+    // Find all state files
+    let state_dir = Path::new("src/state");
+    if state_dir.exists() {
+        for entry in fs::read_dir(state_dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+
+            if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                if let Some(structs) = parse_state_file(&path) {
+                    state_structs.extend(structs);
+                }
+            }
+        }
+    }
+
+    // Also check for state definitions in other source files
+    let src_dir = Path::new("src");
+    if src_dir.exists() {
+        for entry in fs::read_dir(src_dir).unwrap() {
+            let entry = entry.unwrap();
+            let path = entry.path();
+
+            if path.extension().and_then(|s| s.to_str()) == Some("rs") {
+                let filename = path.file_name().and_then(|s| s.to_str()).unwrap_or("");
+                if filename != "lib.rs" && filename != "generated.rs" && filename != "error.rs" {
+                    if let Some(structs) = parse_state_file(&path) {
+                        state_structs.extend(structs);
+                    }
+                }
+            }
+        }
+    }
+
+    state_structs
+}
+
+fn parse_state_file(path: &Path) -> Option<Vec<StateMeta>> {
+    let content = fs::read_to_string(path).ok()?;
+    let mut state_structs = Vec::new();
+
+    // Look for define_state! macro calls
+    let mut start_pos = 0;
+    while let Some(start) = content[start_pos..].find("define_state!") {
+        let actual_start = start_pos + start;
+        if let Some(state_meta) = parse_define_state_macro(&content[actual_start..]) {
+            state_structs.extend(state_meta);
+        }
+        start_pos = actual_start + 1;
+    }
+
+    if state_structs.is_empty() {
+        None
+    } else {
+        Some(state_structs)
+    }
+}
+
+fn parse_define_state_macro(content: &str) -> Option<Vec<StateMeta>> {
+    // Find the macro content between braces
+    let start = content.find('{')?;
+    let mut brace_count = 0;
+    let mut in_macro = false;
+    let mut macro_content = String::new();
+
+    for ch in content[start..].chars() {
+        if ch == '{' {
+            brace_count += 1;
+            in_macro = true;
+        } else if ch == '}' {
+            brace_count -= 1;
+        }
+
+        if in_macro {
+            macro_content.push(ch);
+        }
+
+        if brace_count == 0 && in_macro {
+            break;
+        }
+    }
+
+    // Parse the macro content for struct definitions
+    let mut structs = Vec::new();
+    let lines: Vec<&str> = macro_content.lines().collect();
+
+    let mut current_struct: Option<StateMeta> = None;
+    let mut in_struct = false;
+
+    for line in lines {
+        let line = line.trim();
+
+        // Look for struct definition: "pub struct StructName {"
+        if line.starts_with("pub struct") && line.contains('{') {
+            if let Some(struct_name) = extract_struct_name(line) {
+                current_struct = Some(StateMeta {
+                    name: struct_name,
+                    fields: Vec::new(),
+                });
+                in_struct = true;
+            }
+            continue;
+        }
+
+        // End of struct
+        if line == "}" && in_struct {
+            if let Some(state_struct) = current_struct.take() {
+                structs.push(state_struct);
+            }
+            in_struct = false;
+            continue;
+        }
+
+        // Parse field lines: "pub field_name: field_type,"
+        if in_struct && line.starts_with("pub ") && line.contains(':') {
+            if let Some(field) = parse_state_field_line(line) {
+                if let Some(ref mut state_struct) = current_struct {
+                    state_struct.fields.push(field);
+                }
+            }
+        }
+    }
+
+    if structs.is_empty() {
+        None
+    } else {
+        Some(structs)
+    }
+}
+
+fn extract_struct_name(line: &str) -> Option<String> {
+    // Parse "pub struct StructName {"
+    let parts: Vec<&str> = line.split_whitespace().collect();
+    if parts.len() >= 3 && parts[0] == "pub" && parts[1] == "struct" {
+        let name = parts[2].trim_end_matches('{').trim();
+        Some(name.to_string())
+    } else {
+        None
+    }
+}
+
+fn parse_state_field_line(line: &str) -> Option<StateFieldMeta> {
+    // Parse "pub field_name: field_type,"
+    if let Some(colon_pos) = line.find(':') {
+        let field_part = &line[..colon_pos];
+        let type_part = &line[colon_pos + 1..];
+
+        let field_name = field_part.trim().strip_prefix("pub ")?.trim();
+        let field_type = type_part.trim().trim_end_matches(',');
+
+        Some(StateFieldMeta {
+            name: field_name.to_string(),
+            field_type: field_type.to_string(),
+        })
+    } else {
+        None
+    }
+}
+
+fn generate_program_code(
+    instructions: &[InstructionMeta],
+    errors: &[ErrorMeta],
+    state_structs: &[StateMeta],
+) -> String {
     let mut code = String::new();
 
     code.push_str("use shank::ShankInstruction;\n");
@@ -393,23 +573,18 @@ fn generate_program_code(instructions: &[InstructionMeta], errors: &[ErrorMeta])
     // Generate ShankAccount definitions for state structs
     code.push_str("// ShankAccount definitions for state structs\n");
     code.push_str("// These are generated for IDL compatibility\n");
-    code.push_str("#[repr(C)]\n");
-    code.push_str("#[derive(Clone, shank::ShankAccount)]\n");
-    code.push_str("pub struct Vote {\n");
-    code.push_str("    pub token: [u8; 32],\n");
-    code.push_str("    pub true_votes: [u8; 8],\n");
-    code.push_str("    pub false_votes: [u8; 8],\n");
-    code.push_str("    pub end_timestamp: [u8; 8],\n");
-    code.push_str("    pub vault_bump: u8,\n");
-    code.push_str("}\n\n");
 
-    code.push_str("#[repr(C)]\n");
-    code.push_str("#[derive(Clone, shank::ShankAccount)]\n");
-    code.push_str("pub struct Position {\n");
-    code.push_str("    pub amount: [u8; 8],\n");
-    code.push_str("    pub side: u8,\n");
-    code.push_str("    pub bump: u8,\n");
-    code.push_str("}\n\n");
+    for state_struct in state_structs {
+        code.push_str("#[repr(C)]\n");
+        code.push_str("#[derive(Clone, shank::ShankAccount)]\n");
+        code.push_str(&format!("pub struct {} {{\n", state_struct.name));
+
+        for field in &state_struct.fields {
+            code.push_str(&format!("    pub {}: {},\n", field.name, field.field_type));
+        }
+
+        code.push_str("}\n\n");
+    }
 
     // Generate dispatch function
     code.push_str("pub fn process_instruction(\n");

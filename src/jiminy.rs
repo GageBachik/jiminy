@@ -469,65 +469,6 @@ pub mod perf {
     }
 }
 
-/// Define program errors with automatic InvalidDiscriminator
-/// 
-/// This macro generates error enums that are compatible with shank IDL generation.
-/// The generated enum will appear in the IDL types section when shank processes the crate.
-/// 
-/// Usage:
-/// ```rust
-/// define_program_errors! {
-///     pub enum MyProgramError {
-///         #[doc = "Custom error message"]
-///         CustomError = 6002,
-///         AnotherError = 6003,
-///     }
-/// }
-/// ```
-#[macro_export]
-macro_rules! define_program_errors {
-    (
-        pub enum $error_name:ident {
-            $(
-                $(#[doc = $doc:literal])*
-                $variant:ident = $code:literal
-            ),* $(,)?
-        }
-    ) => {
-        /// Program error codes  
-        #[derive(Clone, PartialEq, Eq, ::shank::ShankType)]
-        #[repr(u32)]
-        pub enum $error_name {
-            /// Invalid instruction discriminator
-            InvalidDiscriminator = 6001,
-            $(
-                $(#[doc = $doc])*
-                $variant = $code,
-            )*
-        }
-
-        impl From<$error_name> for ::pinocchio::program_error::ProgramError {
-            fn from(e: $error_name) -> Self {
-                Self::Custom(e as u32)
-            }
-        }
-
-        impl core::fmt::Display for $error_name {
-            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-                match self {
-                    $error_name::InvalidDiscriminator => write!(f, "Invalid instruction discriminator"),
-                    $(
-                        $error_name::$variant => write!(f, "{}", stringify!($variant)),
-                    )*
-                }
-            }
-        }
-
-        // Re-export InvalidDiscriminator for jiminy macros
-        pub use $error_name::InvalidDiscriminator;
-    };
-}
-
 /// Re-export common items
 pub use paste::paste;
 
@@ -590,7 +531,48 @@ macro_rules! jiminy_define_program {
                         }
                     }
                 )*
-                _ => Err(crate::error::InvalidDiscriminator.into()),
+                _ => Err($crate::error::PTokenProgramError::InvalidDiscriminator.into()),
+            }
+        }
+    };
+}
+
+/// Macro that generates program errors with ShankType for IDL generation
+///
+/// Usage:
+/// ```
+/// define_errors! {
+///     ProgramError,
+///     InvalidDiscriminator = 6001,
+///     PlatformKeyIncorrect = 6002,
+///     VaultKeyIncorrect = 6003,
+/// }
+/// ```
+///
+/// This will generate:
+/// - An enum with #[derive(Clone, PartialEq, ShankType)]
+/// - impl From<ProgramError> for ProgramError conversion
+#[macro_export]
+macro_rules! define_errors {
+    (
+        $error_name:ident,
+        $(
+            $variant:ident = $code:literal
+        ),* $(,)?
+    ) => {
+        use pinocchio::program_error::ProgramError;
+        use shank::ShankType;
+
+        #[derive(Clone, PartialEq, ShankType)]
+        pub enum $error_name {
+            $(
+                $variant = $code,
+            )*
+        }
+
+        impl From<$error_name> for ProgramError {
+            fn from(e: $error_name) -> Self {
+                Self::Custom(e as u32)
             }
         }
     };
@@ -600,6 +582,7 @@ macro_rules! jiminy_define_program {
 #[macro_export]
 macro_rules! jiminy_program {
     (
+        error_type: $error_type:ty,
         $(
             $disc:literal => $instruction:ident
         ),* $(,)?
@@ -623,7 +606,7 @@ macro_rules! jiminy_program {
                         }
                     }
                 )*
-                _ => Err(crate::error::InvalidDiscriminator.into()),
+                _ => Err(<$error_type>::InvalidDiscriminator.into()),
             }
         }
     };
